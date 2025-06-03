@@ -27,12 +27,27 @@ async function run() {
     // all collections here
     const foodsCollection = client.db('foodioDB').collection('foods');
 
+
     // all routes here
-    app.get('/', (req, res) => {
-      res.send('Server is running')
+
+    //foods related api here
+    app.post('/foods', async(req, res) =>{
+        const newFood = req.body;
+        const result = await foodsCollection.insertOne(newFood);
+        res.send(result);
     })
 
 
+
+
+
+
+
+
+    //default server running
+    app.get('/', (req, res) => {
+      res.send('Server is running')
+    })
     
     // await client.connect();
     // Send a ping to confirm a successful connection
