@@ -31,6 +31,13 @@ async function run() {
     // all routes here
 
     //foods related api here
+    //get all foods
+    app.get('/foods', async(req, res) =>{
+        const result = await foodsCollection.find().toArray();
+        res.send(result);
+
+    })
+
     app.post('/foods', async(req, res) =>{
         const newFood = req.body;
         const result = await foodsCollection.insertOne(newFood);
