@@ -25,6 +25,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // all collections here
+    const foodsCollection = client.db('foodioDB').collection('foods');
 
     // all routes here
     app.get('/', (req, res) => {
