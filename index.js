@@ -72,13 +72,20 @@ async function run() {
     //edit a food by id
     app.put('/foods/:id', async (req, res) => {
       const id = req.params.id;
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send({ message: 'Email query is required' });
+      }
       const updatedFood = req.body;
-      const query = { _id: new ObjectId(id) };
-      const options = { upsert: true };
+      const query = { _id: new ObjectId(id), user_email: email };
+      const options = { upsert: false };
       const updateDoc = {
         $set: updatedFood,
       };
       const result = await foodsCollection.updateOne(query, updateDoc, options);
+      if (result.matchedCount === 0) {
+        return res.status(403).send({ message: 'You are not authorized to edit this food or it does not exist.' });
+      }
       res.send(result);
     })
 
@@ -97,6 +104,15 @@ async function run() {
       res.send(result);
     })
 
+     // Get top 6 foods by purchase_count
+    app.get('/top-foods', async (req, res) => {
+      const result = await foodsCollection.find({})
+        .sort({ purchase_count: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+
     //post a new food
     app.post('/foods', async (req, res) => {
       const newFood = req.body;
@@ -104,8 +120,7 @@ async function run() {
       res.send(result);
     })
 
-
-
+   
 
 
 
