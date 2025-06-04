@@ -82,6 +82,21 @@ async function run() {
       res.send(result);
     })
 
+    //delete a food by id
+    app.delete('/foods/:id', async (req, res) => {
+      const id = req.params.id;
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send({ message: 'Email query is required' });
+      }
+      const query = { _id: new ObjectId(id), user_email: email };
+      const result = await foodsCollection.deleteOne(query);
+      if (result.deletedCount === 0) {
+        return res.status(403).send({ message: 'You are not authorized to delete this food or it does not exist.' });
+      }
+      res.send(result);
+    })
+
     //post a new food
     app.post('/foods', async (req, res) => {
       const newFood = req.body;
