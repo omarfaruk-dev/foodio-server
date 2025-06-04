@@ -69,6 +69,19 @@ async function run() {
       res.send(result);
     })
 
+    //edit a food by id
+    app.put('/foods/:id', async (req, res) => {
+      const id = req.params.id;
+      const updatedFood = req.body;
+      const query = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updateDoc = {
+        $set: updatedFood,
+      };
+      const result = await foodsCollection.updateOne(query, updateDoc, options);
+      res.send(result);
+    })
+
     //post a new food
     app.post('/foods', async (req, res) => {
       const newFood = req.body;
