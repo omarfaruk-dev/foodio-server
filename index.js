@@ -32,33 +32,48 @@ async function run() {
 
     //foods related api here
     //get all foods
-    app.get('/foods', async(req, res) =>{
-        //search on all foods
-        const searchParams = req.query.search;
-        let query = {};
-        if (searchParams) {
-            query = {
-                food_name: { $regex: searchParams, $options: 'i' }
-            };
-        }
+    app.get('/foods', async (req, res) => {
+      //search on all foods
+      const searchParams = req.query.search;
+      let query = {};
+      if (searchParams) {
+        query = {
+          food_name: { $regex: searchParams, $options: 'i' }
+        };
+      }
 
-        const result = await foodsCollection.find(query).toArray();
-        res.send(result);
+      const result = await foodsCollection.find(query).toArray();
+      res.send(result);
 
     })
+
+    // Get all foods added by a specific user (via email)
+    app.get('/my-foods', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: 'Email query is required' });
+      }
+
+      const query = { user_email: email };
+      const result = await foodsCollection.find(query).toArray();
+      res.send(result);
+    });
+
 
     //get a single food by id
-    app.get('/foods/:id', async(req, res) =>{
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await foodsCollection.findOne(query);
-        res.send(result);
+    app.get('/foods/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await foodsCollection.findOne(query);
+      res.send(result);
     })
 
-    app.post('/foods', async(req, res) =>{
-        const newFood = req.body;
-        const result = await foodsCollection.insertOne(newFood);
-        res.send(result);
+    //post a new food
+    app.post('/foods', async (req, res) => {
+      const newFood = req.body;
+      const result = await foodsCollection.insertOne(newFood);
+      res.send(result);
     })
 
 
@@ -72,7 +87,7 @@ async function run() {
     app.get('/', (req, res) => {
       res.send('Server is running')
     })
-    
+
     // await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
