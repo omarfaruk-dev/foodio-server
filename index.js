@@ -26,9 +26,21 @@ async function run() {
   try {
     // all collections here
     const foodsCollection = client.db('foodioDB').collection('foods');
+    const ordersCollection = client.db('foodioDB').collection('orders');
+
 
 
     // all routes here
+
+    //orders related api here
+    //post a new order
+     app.post('/orders', async (req, res) => {
+      const newOrder = req.body;
+      const result = await ordersCollection.insertOne(newOrder);
+      res.send(result);
+    })
+
+    
 
     //foods related api here
     //get all foods
