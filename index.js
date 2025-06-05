@@ -33,11 +33,91 @@ async function run() {
     // all routes here
 
     //orders related api here
-    //post a new order
-     app.post('/orders', async (req, res) => {
-      const newOrder = req.body;
-      const result = await ordersCollection.insertOne(newOrder);
+
+    // Get all orders added by a specific user (via email)
+    app.get('/my-orders', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: 'Email query is required' });
+      }
+
+      // Use aggregation to join food info
+      const result = await ordersCollection.aggregate([
+        { $match: { buyer_email: email } },
+        {
+          $addFields: {
+            foodIdObj: {
+              $cond: [
+                { $eq: [ { $type: "$foodId" }, "objectId" ] },
+                "$foodId",
+                { $toObjectId: "$foodId" }
+              ]
+            }
+          }
+        },
+        {
+          $lookup: {
+            from: 'foods',
+            localField: 'foodIdObj',
+            foreignField: '_id',
+            as: 'food_info'
+          }
+        },
+        {
+          $unwind: {
+            path: '$food_info',
+            preserveNullAndEmptyArrays: true
+          }
+        }
+      ]).toArray();
       res.send(result);
+    });
+
+    // Post a new order and update food quantity & purchase_count with validation
+    app.post('/orders', async (req, res) => {
+      try {
+        const newOrder = req.body;
+        const foodId = newOrder.foodId;
+        const orderQuantity = Number(newOrder.order_quantity);
+
+        // Validate foodId
+        if (!ObjectId.isValid(foodId)) {
+          return res.status(400).send({ message: 'Invalid foodId' });
+        }
+        // Validate order quantity
+        if (!orderQuantity || orderQuantity < 1) {
+          return res.status(400).send({ message: 'Invalid order quantity' });
+        }
+
+        // Check if food exists
+        const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
+        if (!food) {
+          return res.status(404).send({ message: 'Food not found' });
+        }
+        // Check if enough quantity is available
+        if (food.quantity < orderQuantity) {
+          return res.status(400).send({ message: 'Items Stock Out' });
+        }
+
+        // Insert the new order
+        const result = await ordersCollection.insertOne(newOrder);
+
+        // Update the food item's quantity and purchase_count
+        await foodsCollection.updateOne(
+          { _id: new ObjectId(foodId) },
+          {
+            $inc: {
+              quantity: -orderQuantity,
+              purchase_count: orderQuantity
+            }
+          }
+        );
+
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: err.message || 'Internal Server Error' });
+      }
     })
 
     
