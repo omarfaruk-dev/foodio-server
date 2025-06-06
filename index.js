@@ -121,6 +121,56 @@ async function run() {
     })
 
     
+    // Delete all orders for a specific user by email
+    app.delete('/my-orders', async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: 'Email query is required' });
+      }
+
+      const result = await ordersCollection.deleteMany({ buyer_email: email });
+      res.send(result);
+    });
+
+    // Delete a single order by order id and update food quantity and purchase_count
+    app.delete('/my-orders/:orderId', async (req, res) => {
+      try {
+        const orderId = req.params.orderId;
+        if (!ObjectId.isValid(orderId)) {
+          return res.status(400).send({ message: 'Invalid orderId' });
+        }
+
+        // Find the order to get foodId and order_quantity
+        const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
+        if (!order) {
+          return res.status(404).send({ message: 'Order not found' });
+        }
+
+        // Delete the order
+        const result = await ordersCollection.deleteOne({ _id: new ObjectId(orderId) });
+
+        // Update the food's quantity and purchase_count (reverse the order effect)
+        const foodId = order.foodId;
+        const orderQuantity = Number(order.order_quantity);
+        if (foodId && orderQuantity) {
+          // Always convert foodId to ObjectId for update
+          await foodsCollection.updateOne(
+            { _id: ObjectId.isValid(foodId) ? new ObjectId(foodId) : foodId },
+            {
+              $inc: {
+                quantity: orderQuantity, // Restore the quantity
+                purchase_count: -orderQuantity // Decrease purchase count
+              }
+            }
+          );
+        }
+
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: err.message || 'Internal Server Error' });
+      }
+    });
 
     //foods related api here
     //get all foods
