@@ -7,9 +7,14 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 3000;
 
+const admin = require("firebase-admin");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
+
 //middleware
 app.use(cors());
 app.use(express.json());
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.2vxppji.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -20,6 +25,11 @@ const client = new MongoClient(uri, {
     strict: true,
     deprecationErrors: true,
   }
+});
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
 });
 
 async function run() {
