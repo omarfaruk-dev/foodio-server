@@ -6,7 +6,7 @@
     "firebase-admin": "^13.4.0",
     "mongodb": "^6.16.0"
   },
-  "name": "backend-project-setup",
+  "name": "Foodio",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {

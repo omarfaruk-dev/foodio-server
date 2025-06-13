@@ -1,91 +1,110 @@
-const express = require('express')
-const cors = require('cors');
-require('dotenv').config()
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const admin = require("firebase-admin");
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString(
+  'utf8'
+);
 const serviceAccount = JSON.parse(decoded);
 
 //middleware
 app.use(cors());
 app.use(express.json());
 
-
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.2vxppji.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// Create a MongoClient with a MongoClientOptions  object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 // Initialize Firebase Admin SDK
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
+
+const verifyFireBaseToken = async (req, res, next) => {
+  const authHeader = req.headers?.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).send({ message: "Unauthorized Access" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    // console.log("decoded token", decoded);
+    req.decoded = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+};
 
 async function run() {
   try {
     // all collections here
-    const foodsCollection = client.db('foodioDB').collection('foods');
-    const ordersCollection = client.db('foodioDB').collection('orders');
-
-
+    const foodsCollection = client.db("foodioDB").collection("foods");
+    const ordersCollection = client.db("foodioDB").collection("orders");
 
     // all routes here
 
     //orders related api here
 
     // Get all orders added by a specific user (via email)
-    app.get('/my-orders', async (req, res) => {
+    app.get("/my-orders", verifyFireBaseToken, async (req, res) => {
       const email = req.query.email;
 
-      if (!email) {
-        return res.status(400).send({ message: 'Email query is required' });
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
 
       // Use aggregation to join food info
-      const result = await ordersCollection.aggregate([
-        { $match: { buyer_email: email } },
-        {
-          $addFields: {
-            foodIdObj: {
-              $cond: [
-                { $eq: [ { $type: "$foodId" }, "objectId" ] },
-                "$foodId",
-                { $toObjectId: "$foodId" }
-              ]
-            }
-          }
-        },
-        {
-          $lookup: {
-            from: 'foods',
-            localField: 'foodIdObj',
-            foreignField: '_id',
-            as: 'food_info'
-          }
-        },
-        {
-          $unwind: {
-            path: '$food_info',
-            preserveNullAndEmptyArrays: true
-          }
-        }
-      ]).toArray();
+      const result = await ordersCollection
+        .aggregate([
+          { $match: { buyer_email: email } },
+          {
+            $addFields: {
+              foodIdObj: {
+                $cond: [
+                  { $eq: [{ $type: "$foodId" }, "objectId"] },
+                  "$foodId",
+                  { $toObjectId: "$foodId" },
+                ],
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "foods",
+              localField: "foodIdObj",
+              foreignField: "_id",
+              as: "food_info",
+            },
+          },
+          {
+            $unwind: {
+              path: "$food_info",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+        ])
+        .toArray();
       res.send(result);
     });
 
     // Post a new order and update food quantity & purchase_count with validation
-    app.post('/orders', async (req, res) => {
+    app.post("/orders", async (req, res) => {
       try {
         const newOrder = req.body;
         const foodId = newOrder.foodId;
@@ -93,21 +112,23 @@ async function run() {
 
         // Validate foodId
         if (!ObjectId.isValid(foodId)) {
-          return res.status(400).send({ message: 'Invalid foodId' });
+          return res.status(400).send({ message: "Invalid foodId" });
         }
         // Validate order quantity
         if (!orderQuantity || orderQuantity < 1) {
-          return res.status(400).send({ message: 'Invalid order quantity' });
+          return res.status(400).send({ message: "Invalid order quantity" });
         }
 
         // Check if food exists
-        const food = await foodsCollection.findOne({ _id: new ObjectId(foodId) });
+        const food = await foodsCollection.findOne({
+          _id: new ObjectId(foodId),
+        });
         if (!food) {
-          return res.status(404).send({ message: 'Food not found' });
+          return res.status(404).send({ message: "Food not found" });
         }
         // Check if enough quantity is available
         if (food.quantity < orderQuantity) {
-          return res.status(400).send({ message: 'Items Stock Out' });
+          return res.status(400).send({ message: "Items Stock Out" });
         }
 
         // Insert the new order
@@ -119,46 +140,39 @@ async function run() {
           {
             $inc: {
               quantity: -orderQuantity,
-              purchase_count: orderQuantity
-            }
+              purchase_count: orderQuantity,
+            },
           }
         );
 
         res.send(result);
       } catch (err) {
-        res.status(500).send({ message: err.message || 'Internal Server Error' });
+        res
+          .status(500)
+          .send({ message: err.message || "Internal Server Error" });
       }
-    })
-
-    
-    // Delete all orders for a specific user by email
-    app.delete('/my-orders', async (req, res) => {
-      const email = req.query.email;
-
-      if (!email) {
-        return res.status(400).send({ message: 'Email query is required' });
-      }
-
-      const result = await ordersCollection.deleteMany({ buyer_email: email });
-      res.send(result);
     });
 
     // Delete a single order by order id and update food quantity and purchase_count
-    app.delete('/my-orders/:orderId', async (req, res) => {
+    app.delete("/my-orders/:orderId", async (req, res) => {
       try {
         const orderId = req.params.orderId;
         if (!ObjectId.isValid(orderId)) {
-          return res.status(400).send({ message: 'Invalid orderId' });
+          return res.status(400).send({ message: "Invalid orderId" });
         }
 
         // Find the order to get foodId and order_quantity
-        const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
+        const order = await ordersCollection.findOne({
+          _id: new ObjectId(orderId),
+        });
         if (!order) {
-          return res.status(404).send({ message: 'Order not found' });
+          return res.status(404).send({ message: "Order not found" });
         }
 
         // Delete the order
-        const result = await ordersCollection.deleteOne({ _id: new ObjectId(orderId) });
+        const result = await ordersCollection.deleteOne({
+          _id: new ObjectId(orderId),
+        });
 
         // Update the food's quantity and purchase_count (reverse the order effect)
         const foodId = order.foodId;
@@ -170,63 +184,67 @@ async function run() {
             {
               $inc: {
                 quantity: orderQuantity, // Restore the quantity
-                purchase_count: -orderQuantity // Decrease purchase count
-              }
+                purchase_count: -orderQuantity, // Decrease purchase count
+              },
             }
           );
         }
 
         res.send(result);
       } catch (err) {
-        res.status(500).send({ message: err.message || 'Internal Server Error' });
+        res
+          .status(500)
+          .send({ message: err.message || "Internal Server Error" });
       }
     });
 
     //foods related api here
     //get all foods
-    app.get('/foods', async (req, res) => {
+    app.get("/foods", async (req, res) => {
       //search on all foods
       const searchParams = req.query.search;
       let query = {};
       if (searchParams) {
         query = {
-          food_name: { $regex: searchParams, $options: 'i' }
+          food_name: { $regex: searchParams, $options: "i" },
         };
       }
 
       const result = await foodsCollection.find(query).toArray();
       res.send(result);
-
-    })
+    });
 
     // Get all foods added by a specific user (via email)
-    app.get('/my-foods', async (req, res) => {
+    app.get("/my-foods", verifyFireBaseToken, async (req, res) => {
       const email = req.query.email;
 
-      if (!email) {
-        return res.status(400).send({ message: 'Email query is required' });
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
       }
+
+      // if (!email) {
+      //   return res.status(400).send({ message: "Email query is required" });
+      // }
 
       const query = { user_email: email };
       const result = await foodsCollection.find(query).toArray();
       res.send(result);
     });
 
-
     //get a single food by id
-    app.get('/foods/:id', async (req, res) => {
+    app.get("/foods/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await foodsCollection.findOne(query);
       res.send(result);
-    })
+    });
 
     //edit a food by id
-    app.put('/foods/:id', async (req, res) => {
+    app.put("/foods/:id", async (req, res) => {
       const id = req.params.id;
       const email = req.query.email;
       if (!email) {
-        return res.status(400).send({ message: 'Email query is required' });
+        return res.status(400).send({ message: "Email query is required" });
       }
       const updatedFood = req.body;
       const query = { _id: new ObjectId(id), user_email: email };
@@ -236,29 +254,37 @@ async function run() {
       };
       const result = await foodsCollection.updateOne(query, updateDoc, options);
       if (result.matchedCount === 0) {
-        return res.status(403).send({ message: 'You are not authorized to edit this food or it does not exist.' });
+        return res.status(403).send({
+          message:
+            "You are not authorized to edit this food or it does not exist.",
+        });
       }
       res.send(result);
-    })
+    });
 
     //delete a food by id
-    app.delete('/foods/:id', async (req, res) => {
+    app.delete("/foods/:id", async (req, res) => {
       const id = req.params.id;
       const email = req.query.email;
+
       if (!email) {
-        return res.status(400).send({ message: 'Email query is required' });
+        return res.status(400).send({ message: "Email query is required" });
       }
       const query = { _id: new ObjectId(id), user_email: email };
       const result = await foodsCollection.deleteOne(query);
       if (result.deletedCount === 0) {
-        return res.status(403).send({ message: 'You are not authorized to delete this food or it does not exist.' });
+        return res.status(403).send({
+          message:
+            "You are not authorized to delete this food or it does not exist.",
+        });
       }
       res.send(result);
-    })
+    });
 
-     // Get top 6 foods by purchase_count
-    app.get('/top-foods', async (req, res) => {
-      const result = await foodsCollection.find({})
+    // Get top 6 foods by purchase_count
+    app.get("/top-foods", async (req, res) => {
+      const result = await foodsCollection
+        .find({})
         .sort({ purchase_count: -1 })
         .limit(6)
         .toArray();
@@ -266,27 +292,23 @@ async function run() {
     });
 
     //post a new food
-    app.post('/foods', async (req, res) => {
+    app.post("/foods", async (req, res) => {
       const newFood = req.body;
       const result = await foodsCollection.insertOne(newFood);
       res.send(result);
-    })
-
-   
-
-
-
-
+    });
 
     //default server running
-    app.get('/', (req, res) => {
-      res.send('Server is running')
-    })
+    app.get("/", (req, res) => {
+      res.send("Server is running");
+    });
 
     // await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
