@@ -286,7 +286,7 @@ async function run() {
       const result = await foodsCollection
         .find({})
         .sort({ purchase_count: -1 })
-        .limit(6)
+        .limit(8)
         .toArray();
       res.send(result);
     });
