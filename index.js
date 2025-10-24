@@ -200,7 +200,47 @@ async function run() {
 
     //wishlist related api here
 
-    
+    // Get user's wishlist with food details
+    app.get("/wishlist", verifyFireBaseToken, async (req, res) => {
+      const email = req.query.email;
+
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+
+      // Use aggregation to join food info
+      const result = await wishlistCollection
+        .aggregate([
+          { $match: { user_email: email } },
+          {
+            $addFields: {
+              foodIdObj: {
+                $cond: [
+                  { $eq: [{ $type: "$foodId" }, "objectId"] },
+                  "$foodId",
+                  { $toObjectId: "$foodId" },
+                ],
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "foods",
+              localField: "foodIdObj",
+              foreignField: "_id",
+              as: "food_info",
+            },
+          },
+          {
+            $unwind: {
+              path: "$food_info",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
+    });
 
     // Add food to wishlist
     app.post("/wishlist", verifyFireBaseToken, async (req, res) => {
