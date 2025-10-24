@@ -274,6 +274,37 @@ async function run() {
       }
     });
 
+    // Remove food from wishlist
+    app.delete("/wishlist/:id", verifyFireBaseToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const email = req.query.email;
+
+        if (email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid wishlist item id" });
+        }
+
+        const result = await wishlistCollection.deleteOne({
+          _id: new ObjectId(id),
+          user_email: email,
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Wishlist item not found or unauthorized" });
+        }
+
+        res.send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ message: err.message || "Internal Server Error" });
+      }
+    });
+
     
   
     //foods related api here
