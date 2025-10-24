@@ -43,7 +43,6 @@ const verifyFireBaseToken = async (req, res, next) => {
 
   try {
     const decoded = await admin.auth().verifyIdToken(token);
-    // console.log("decoded token", decoded);
     req.decoded = decoded;
     next();
   } catch (error) {
@@ -56,6 +55,7 @@ async function run() {
     // all collections here
     const foodsCollection = client.db("foodioDB").collection("foods");
     const ordersCollection = client.db("foodioDB").collection("orders");
+    const wishlistCollection = client.db("foodioDB").collection("wishlist");
 
     // all routes here
 
@@ -197,6 +197,44 @@ async function run() {
           .send({ message: err.message || "Internal Server Error" });
       }
     });
+
+    //wishlist related api here
+
+    
+
+    // Add food to wishlist
+    app.post("/wishlist", verifyFireBaseToken, async (req, res) => {
+      try {
+        const wishlistItem = req.body;
+        const email = req.query.email;
+
+        if (email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+
+        // Check if food already in wishlist
+        const existingItem = await wishlistCollection.findOne({
+          user_email: email,
+          foodId: wishlistItem.foodId,
+        });
+
+        if (existingItem) {
+          return res.status(400).send({ message: "Food already in wishlist" });
+        }
+
+        wishlistItem.user_email = email;
+        wishlistItem.added_at = Date.now();
+
+        const result = await wishlistCollection.insertOne(wishlistItem);
+        res.send(result);
+      } catch (err) {
+        res
+          .status(500)
+          .send({ message: err.message || "Internal Server Error" });
+      }
+    });
+
+    
   
     //foods related api here
     //get all foods
@@ -296,6 +334,94 @@ async function run() {
       const newFood = req.body;
       const result = await foodsCollection.insertOne(newFood);
       res.send(result);
+    });
+
+    // wishlist related api here
+    // Get user's wishlist with food details
+    app.get("/wishlist", verifyFireBaseToken, async (req, res) => {
+      const email = req.query.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const result = await wishlistCollection
+        .aggregate([
+          { $match: { user_email: email } },
+          {
+            $addFields: {
+              foodIdObj: {
+                $cond: [
+                  { $eq: [{ $type: "$foodId" }, "objectId"] },
+                  "$foodId",
+                  { $toObjectId: "$foodId" },
+                ],
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: "foods",
+              localField: "foodIdObj",
+              foreignField: "_id",
+              as: "food_info",
+            },
+          },
+          {
+            $unwind: {
+              path: "$food_info",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+        ])
+        .toArray();
+      res.send(result);
+    });
+
+    // Add food to wishlist
+    app.post("/wishlist", verifyFireBaseToken, async (req, res) => {
+      try {
+        const wishlistItem = req.body;
+        const email = req.query.email;
+        if (email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+        const existingItem = await wishlistCollection.findOne({
+          user_email: email,
+          foodId: wishlistItem.foodId,
+        });
+        if (existingItem) {
+          return res.status(400).send({ message: "Food already in wishlist" });
+        }
+        wishlistItem.user_email = email;
+        wishlistItem.added_at = Date.now();
+        const result = await wishlistCollection.insertOne(wishlistItem);
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: err.message || "Internal Server Error" });
+      }
+    });
+
+    // Remove food from wishlist
+    app.delete("/wishlist/:id", verifyFireBaseToken, async (req, res) => {
+      try {
+        const id = req.params.id;
+        const email = req.query.email;
+        if (email !== req.decoded.email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid wishlist item id" });
+        }
+        const result = await wishlistCollection.deleteOne({
+          _id: new ObjectId(id),
+          user_email: email,
+        });
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Wishlist item not found or unauthorized" });
+        }
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: err.message || "Internal Server Error" });
+      }
     });
 
     //default server running
